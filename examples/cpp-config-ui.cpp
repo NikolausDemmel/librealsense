@@ -654,6 +654,9 @@ int main(int argc, char * argv[])
     rs::format format[streams] = {};
     unsigned long long  frame_number[streams] = {};
     double frame_timestamp[streams] = {};
+    double frame_actual_fps[streams] = {};
+    double frame_actual_exposure[streams] = {};
+    double frame_gain[streams] = {};
     int fps[streams] = {};
     double dc_preset = 0, iv_preset = 0;
     int offset = 0, panel_height = 1;
@@ -803,6 +806,29 @@ int main(int argc, char * argv[])
                             format[i] = frame.get_format();
                             frame_number[i] = frame.get_frame_number();
                             frame_timestamp[i] = frame.get_timestamp();
+                            if (frame.supports_frame_metadata(RS_FRAME_METADATA_ACTUAL_EXPOSURE)) {
+                                frame_actual_exposure[i] = frame.get_frame_metadata(RS_FRAME_METADATA_ACTUAL_EXPOSURE);
+                            } else {
+                                frame_actual_exposure[i] = 0;
+                            }
+                            if (frame.supports_frame_metadata(RS_FRAME_METADATA_ACTUAL_FPS)) {
+                                frame_actual_fps[i] = frame.get_frame_metadata(RS_FRAME_METADATA_ACTUAL_FPS);
+                            } else {
+                                frame_actual_fps[i] = 0;
+                            }
+                            if (i == (int)rs::stream::fisheye) {
+                                double values[2] = {};
+                                rs::option options[2] = { rs::option::fisheye_gain, rs::option::fisheye_exposure };
+                                dev->get_options(options, 2, values);
+                                frame_gain[i] = values[0];
+                                //if (frame_actual_exposure[i] != values[1])
+                                //{
+                                //    std::cout << "WARNING: metadata exposure is " << frame_actual_exposure[i] << ", but option exposure is " << values[1] << std::endl;
+                                //}
+                                std::cout << "Reading fisheye frame with exposure metadata " << frame_actual_exposure[i] << ", exposure option " << values[1] << " and gain option " << values[0] << std::endl;
+                            } else {
+                                frame_gain[i] = 0;
+                            }
                             fps[i] = frame.get_framerate();
                         }
 
@@ -830,10 +856,10 @@ int main(int argc, char * argv[])
                         {
                             prev_pos = pos_vec[i];
                             pos_vec[i] = center_position;
-                            buffers[i].show((rs::stream)i, format[i], fps[i], frame_number[i], frame_timestamp[i], pos_vec[i].rx, pos_vec[i].ry, pos_vec[i].rw, pos_vec[i].rh, resolutions[(rs::stream)i].width, resolutions[(rs::stream)i].height);
+                            buffers[i].show((rs::stream)i, format[i], fps[i], frame_number[i], frame_timestamp[i], frame_actual_exposure[i], frame_actual_fps[i], frame_gain[i], pos_vec[i].rx, pos_vec[i].ry, pos_vec[i].rw, pos_vec[i].rh, resolutions[(rs::stream)i].width, resolutions[(rs::stream)i].height);
                         }
                         else if (!gui_click_flag)
-                            buffers[i].show((rs::stream)i, format[i], fps[i], frame_number[i], frame_timestamp[i], pos_vec[i].rx, pos_vec[i].ry, pos_vec[i].rw, pos_vec[i].rh, resolutions[(rs::stream)i].width, resolutions[(rs::stream)i].height);
+                            buffers[i].show((rs::stream)i, format[i], fps[i], frame_number[i], frame_timestamp[i], frame_actual_exposure[i], frame_actual_fps[i], frame_gain[i], pos_vec[i].rx, pos_vec[i].ry, pos_vec[i].rw, pos_vec[i].rh, resolutions[(rs::stream)i].width, resolutions[(rs::stream)i].height);
 
                         if (frame_clicked[i])
                             draw_autoexposure_roi_boundary((rs::stream)i, options, dev, g, center_position.rx, center_position.ry, center_position.rw, center_position.rh);
@@ -873,7 +899,18 @@ int main(int argc, char * argv[])
                         g.slider((int)o.opt + 1, { w - 260, y + 16, w - 20, y + 36 }, o.min, o.max, o.step, o.value))
                     {
                         if (is_checkbox) dev->set_option(o.opt, is_checked ? 1 : 0);
-                        else dev->set_option(o.opt, o.value);
+                        else
+                        {
+                            switch (o.opt) {
+                            case rs::option::fisheye_exposure:
+                                std::cout << "manually setting fisheye exposure to " << o.value << std::endl;
+                                break;
+                            case rs::option::fisheye_gain:
+                                std::cout << "manually setting fisheye gain to " << o.value << std::endl;
+                                break;
+                            }
+                            dev->set_option(o.opt, o.value);
+                        }
 
                         update_related_options(*dev, o.opt, options);
 
